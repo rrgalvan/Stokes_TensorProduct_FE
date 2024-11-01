@@ -3,12 +3,8 @@ title: Test 1. Poisson-Dirichlet P1 x P1
 author: Rafa Rodríguez Galván
 date: today
 format:
-  pdf:
-    toc: true
-    number-sections: true
-    include-in-header:  
-      - text: |
-              \usepackage{mathtools}
+  html: default
+  pdf: default
 ---
 
 - Poisson problem with dirichlet conditions

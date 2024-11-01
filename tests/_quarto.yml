@@ -1,0 +1,10 @@
+format:
+  html: 
+    number-sections: true
+  pdf:
+    toc: true
+    number-sections: true
+    include-in-header:  
+      - text: |
+              \usepackage{mathtools}
+
