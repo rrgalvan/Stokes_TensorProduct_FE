@@ -1,0 +1,153 @@
+---
+title: Custom finite element
+---
+
+We will use the Basix library (from FEniCS), following the idea in [this example](https://docs.fenicsproject.org/basix/main/python/demo/demo_custom_element.py.html)
+
+## P2xP1 Elements
+We are going to program a (y-discontinuous) finite element P2xP1, with the following degres of freedom:
+
+```
+o---o---o
+|       |
+|       |
+o---o---o
+```
+
+We outline a 2x2 mesh:
+```
+o--o--o--o--o
+|     |     |
+o--o--o--o--o
+|     |     |
+o--o--o--o--o
+```
+Set of polynomials spanned by each element: 
+$$S=\{1,x,x^2,y,xy,x^2y\}.$$
+
+### Polynomial coefficients
+We must define the coefficients of the 6 functions above in terms of the following 9 polynomials of degree $\le 2$ on a quadrilateral mesh:
+$$B=\{1,y,y^2,x,xy,xy^2,x^2,x^2y,x^2y^2\}.$$
+The order in which these polynomials appear is documented at Basix web site.
+
+Then we define a 6x9 matrix to store the coefficients:
+```{python}
+import numpy as np
+wcoeffs = np.zeros((6,9))
+```
+
+For instance, the first polynomial in $S$ is represented by introducing the following values in the first row of the matrix `wcoeffs`: $(1,0,\dots,0)$.
+
+By reordering $S$ as $$S=\{1,y,x,xy,x^2,x^2y\}.$$ we have clearly:
+```{python}
+import numpy as np
+wcoeffs[0,0] = 1
+wcoeffs[1,1] = 1
+wcoeffs[2,3] = 1
+wcoeffs[3,4] = 1
+wcoeffs[4,6] = 1
+wcoeffs[5,7] = 1
+```
+
+### Interpolation
+
+We must define the representations of the functionals that are used in the Ciarlet definition of the finite element. In this case, they are evaluations at the corners of the quadrilateral. 
+
+#### Nodes
+We create an array of points for each entity of each dimension. In this case, we must consider the 4 vertices and also 2 edges. No points in the other 2 edges nor in the interior of the 2d cell (nor in the volumetric 3d interior, of course).
+
+And we add an empty array of points for the 2 edges and for the whole 2d cell
+```{python}
+x = [ [], [], [], [] ]
+# Vertex points
+x[0].append(np.array([[0.0, 0.0]]))
+x[0].append(np.array([[1.0, 0.0]]))
+x[0].append(np.array([[0.0, 1.0]]))
+x[0].append(np.array([[1.0, 1.0]]))
+
+# Points on edges
+x[1].append(np.array([[0.5, 0.0]]))
+x[1].append(np.array([[0.5, 1.0]]))
+x[1].append(np.zeros((0,2)))
+x[1].append(np.zeros((0,2)))
+
+# Empty array of points inside the 2d cell
+x[2].append(np.zeros((0,2)))
+x
+```
+
+#### Interpolation matrices
+Matrices that define how the evaluations at the points are combined to evaluate the functionals. As all the DOFs are point evaluations in this example, the matrices are all identity matrices for the entities that have a point
+
+The shape of each matrix is (number of DOFs, value size, number of points, number of derivatives).
+```{python}
+M = [ [], [], [], [] ]
+# 4 vertex points
+for _ in range(4):
+  M[0].append(np.array([[[[1.0]]]]))
+# 2 edge points
+for _ in range(2):
+  M[1].append(np.array([[[[1.0]]]]))
+for _ in range(2):
+  M[1].append(np.zeros((0, 1, 0, 1)))
+```
+There are no DOFs associates with the whole 2d cell, so we add an empty matrix for it. 
+```{python}
+  # Cell
+  M[2].append(np.zeros((0, 1, 0, 1)))
+M
+```
+
+
+### Creating the element
+See [basix doc](https://docs.fenicsproject.org/basix/main/python/demo/demo_custom_element.py.html) for info.
+```{python}
+import basix
+from basix import CellType, MapType, SobolevSpace, PolysetType
+if True:
+  element = basix.create_custom_element(
+    CellType.quadrilateral,
+    [],
+    wcoeffs,
+    x,
+    M,
+    0,
+    MapType.identity,
+    SobolevSpace.H1,
+    False,
+    1,
+    2,
+    PolysetType.standard,
+)
+```
+
+### Quick test
+```{python}
+points = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.0], [0.5, 0.1]])
+print(element.tabulate(0, points))
+```
+
+## P1xP0
+We are going to program a (y-discontinuous) finite element P1xP0:
+```
++-----+------+
+|     |      |
+o     o      o
+|     |      |
++-----+------+
+|     |      |
+o     o      o 
+|     |      |
++-----+------+
+```
+Basis functions: $\varphi_1(x,y)=1$, $\varphi_2(x,y)=x$.
+
+We will use the Basix library (from FEniCS), following the idea in [this example](https://docs.fenicsproject.org/basix/main/python/demo/demo_custom_element.py.html)
+
+```{python}
+import numpy as np
+
+import basix
+```
+
+

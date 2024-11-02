@@ -4,7 +4,6 @@ author: Rafa Rodríguez Galván
 date: today
 format:
   html: default
-  pdf: default
 ---
 
 - Poisson problem with dirichlet conditions
@@ -14,12 +13,12 @@ format:
 - Cartesian product, $P_1\times P_1$ finite elements:
 
 ## Problem: 
-\begin{align}
-- \Delta u &= f \quad \text{in } \Omega(in test 1.1): 
+\begin{align*}
+  - \Delta u &= f \quad \text{in } \Omega: 
   \\
   u &= 0 \quad \text{on }\partial\Omega,
-\end{align}
-where (in test 1.1, see the Python code for other tests): $f=2\pi^2\sin(\pi x)\sin(\pi y)$ and
+\end{align*}
+where (in this case, see the Python code for other tests): $f(x,y)=2\pi^2\sin(\pi x)\sin(\pi y)$ and
 $$
 \quad \Omega=\Omega_1\times \Omega_2 \subset\mathbb R^2,\quad \Omega_1 = \Omega_2 = (0,1).
 $$
@@ -33,7 +32,6 @@ Partitions (in $x$ and $y$):
 \end{align}
 
 Meshes $\cal{T}_h^{(1)}$ y $\cal{T}_h^{(2)}$ defined by those partitions.
-
 
 ```{python}
 import numpy as np
