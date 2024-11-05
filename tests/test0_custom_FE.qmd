@@ -180,6 +180,7 @@ We will use the Basix library (from FEniCS), following the idea in [this example
 import numpy as np
 
 import basix
+import pyvista
 ```
 
 
