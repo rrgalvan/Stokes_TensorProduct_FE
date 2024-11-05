@@ -1,4 +1,4 @@
-TESTS=test1_poisson
+TESTS=test0_custom_FE test1_poisson
 TESTS_HTML=$(TESTS).html
 TESTS_PDF=$(TESTS).pdf
 

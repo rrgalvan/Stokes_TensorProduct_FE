@@ -95,7 +95,7 @@ There are no DOFs associates with the whole 2d cell, so we add an empty matrix f
 ```{python}
   # Cell
   M[2].append(np.zeros((0, 1, 0, 1)))
-M
+  M
 ```
 
 
@@ -118,13 +118,45 @@ if True:
     1,
     2,
     PolysetType.standard,
-)
+  )
 ```
 
 ### Quick test
 ```{python}
 points = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.5, 0.0], [0.5, 0.1]])
 print(element.tabulate(0, points))
+```
+
+### Test in dolfinx
+Poisson-Dirichlet test in the unit square.
+```{python}
+from mpi4py import MPI
+import dolfinx as df
+from dolfinx import (fem, mesh, plot)
+##from ufl import (ds, dx, grad, inner)
+msh = mesh.create_rectangle(
+    comm=MPI.COMM_WORLD,
+    points=((0.0, 0.0), (2.0, 1.0)),
+    n=(32, 16),
+    cell_type=mesh.CellType.quadrilateral,
+)
+# V = fem.functionspace(msh, element)
+
+try:
+  import pyvista
+
+  cells, types, x = plot.vtk_mesh(V)
+  grid = pyvista.UnstructuredGrid(cells, types, x)
+  plotter = pyvista.Plotter()
+  plotter.add_mesh(msh, show_edges=True)
+  if False: #pyvista.OFF_SCREEN:
+    pyvista.start_xvfb(wait=0.1)
+    plotter.screenshot("uh_poisson.png")
+  else:
+    plotter.show()
+except ModuleNotFoundError:
+    print("'pyvista' is required to visualise the solution")
+    print("Install 'pyvista' with pip: 'python3 -m pip install pyvista'")
 ```
 
 ## P1xP0
