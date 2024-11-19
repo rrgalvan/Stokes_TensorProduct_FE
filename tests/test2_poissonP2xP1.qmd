@@ -1,0 +1,379 @@
+---
+title: Test 2. Poisson-Dirichlet P2 x P1 
+author: Rafa Rodríguez Galván
+date: today
+format:
+  html: 
+    theme: solar # Darker themes: darkly, slate, solar
+---
+
+- Poisson problem with dirichlet conditions
+  - Test 1.1: homogeneous D.c.
+  - Test 1.2 and 1.3: non-homogeneous D.c.
+- Rectangular domain
+- Cartesian product, $P_2\times P_1$ finite elements:
+
+## Problem: 
+\begin{align*}
+  - \Delta u &= f \quad \text{in } \Omega: 
+  \\
+  u &= 0 \quad \text{on }\partial\Omega,
+\end{align*}
+where (in this case, see the Python code for other tests): $f(x,y)=2\pi^2\sin(\pi x)\sin(\pi y)$ and
+$$
+\quad \Omega=\Omega_1\times \Omega_2 \subset\mathbb R^2,\quad \Omega_1 = \Omega_2 = (0,1).
+$$
+**Exact solution**: $u(x,y)=\sin(\pi x)\sin(\pi y)$.
+
+## Discretization:
+Partitions (in $x$ and $y$):
+\begin{align}
+\cal{P}_h^{(1)} &= \{0=x_0,\dots, x_n=1\}, \\
+\cal{P}_h^{(2)} &= \{0=y_0,\dots, y_m=1\}, 
+\end{align}
+
+Meshes $\cal{T}_h^{(1)}$ y $\cal{T}_h^{(2)}$ defined by those partitions.
+
+- $\cal{T}_h^{(1)}$ extremes and midpoints of the intervals  
+- $\cal{T}_h^{(2)}$ extremes of the intervals  
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from mpi4py import MPI
+import dolfinx as dl
+
+#-------------- select meshh size ----------------
+n_elem_1, n_elem_2 = 2, 2
+#-------------------------------------------------
+
+n_points_1 = 2*n_elem_1+1  # 3 dofs in each P2 1d cell
+n_points_2 = n_elem_2+1    # 2 dofs in each P1 1d cell
+X0, X1 = 0.0, 4.0 
+Y0, Y1 = 0.0, 2.0
+partition_1 = np.linspace(X0, X1, n_points_1)
+partition_2 = np.linspace(Y0, Y1, n_points_2)
+
+verbosity = 2
+if verbosity>0:
+  print("P^1_h:", partition_1)
+  print("P^2_h:", partition_2)
+
+msh1 = dl.mesh.create_interval(MPI.COMM_WORLD, n_elem_1, [X0, X1])
+msh2 = dl.mesh.create_interval(MPI.COMM_WORLD, n_elem_2, [Y0, Y1])
+
+# Gloabl degrees of freedom
+def cartesian_product(vec_x, vec_y):
+  return np.transpose([np.tile(vec_x, len(vec_y)), 
+                       np.repeat(vec_y, len(vec_x))])
+global_dof = cartesian_product(partition_1, partition_2)
+global_vertex_dof = cartesian_product(partition_1[0::2], 
+                                      partition_2)
+global_midpoint_dof = cartesian_product(partition_1[1::2], 
+                                      partition_2)
+if verbosity>1:
+  print("Global dof:\n", global_dof)
+  print("Global vertex dof:\n", global_vertex_dof)
+  print("Global midpoint dof:\n", global_midpoint_dof)
+
+# Pot dofs
+fig, ax = plt.subplots(nrows=1)
+ax.plot(global_dof[:,0], global_dof[:,1], 'go', ms=1)
+ax.set_title('Global degrees of freedom')
+plt.subplots_adjust(hspace=0.5)
+plt.show()
+```
+
+###  Finite element spaces
+- $V_1$: $P_2$ F.E. space on $\cal{T}_h^{(1)}$ 
+- $V_2$: $P_1$ F.E. space on $\cal{T}_h^{(2)}$ 
+
+#### Notation
+- Let $\chi_i(x)$ the $i$-th $P_2$ global basis function on $\cal{T}_h^{(1)}$ 
+(assuming degrees of freeedom $i=0,\dots,n$)
+- Let $\psi_k(y)$ the $k$-th $P_1$ basis function on $\cal{T}_h^{(2)}$ 
+(degrees of freedom $k=0,\dots,m$)
+\begin{align}
+  \chi_i(x_j) &= \delta_{i,j}, \quad i,j=0,\dots,n \\
+  \psi_k(y_l) &= \delta_{k,l}, \quad k,l=0,\dots, m
+\end{align}
+
+```{python}
+from dolfinx import fem
+import ufl
+from ufl import dx, inner, grad
+V1 = fem.functionspace(msh1, ("Lagrange", 2))
+V2 = fem.functionspace(msh2, ("Lagrange", 1))
+
+# Create trial and test functions
+u1_trial = ufl.TrialFunction(V1)
+uu1_test = ufl.TestFunction(V1)
+u2_trial = ufl.TrialFunction(V2)
+uu2_test = ufl.TestFunction(V2)
+```
+
+
+### Bilinear forms and matrices on $V_1$ and $V_2$
+
+#### Mass matrices
+\begin{align}
+M^{(1)}&=(M^{(1)}_{ij}), \quad 
+&&
+M^{(2)}=(M^{(2)}_{kl}),
+\\ 
+M^{(1)}_{ij} &= \int_\Omega \chi_j(x) \chi_i(x) \; dx\quad
+&&
+M^{(2)}_{kl} = \int_\Omega \psi_l(y) \psi_k(y) \; dy
+\end{align}
+
+#### Stifness matrices
+\begin{align}
+K^{(1)}&=(K^{(1)}_{ij}), \quad 
+&&
+K^{(2)}=(K^{(2)}_{kl}),
+\\ 
+K^{(1)}_{ij} &= \int_\Omega \partial_x\chi_j(x) \partial_x\chi_i(x) \; dx\quad
+&&
+K^{(2)}_{kl} = \int_\Omega \partial_y \psi_l(y) \partial_y\psi_k(y) \; dy
+\end{align}
+
+```{python}
+# Bilinear forms 
+mass_form_1 = u1_trial*uu1_test * dx
+stiffness_form_1 = inner(grad(u1_trial), grad(uu1_test)) * dx
+
+mass_form_2 = u2_trial*uu2_test * dx
+stiffness_form_2 = inner(grad(u2_trial), grad(uu2_test)) * dx
+
+M1 = fem.assemble_matrix(fem.form(mass_form_1), bcs=[]).to_dense()
+K1 = fem.assemble_matrix(fem.form(stiffness_form_1), bcs=[]).to_dense()
+M2 = fem.assemble_matrix(fem.form(mass_form_2), bcs=[]).to_dense()
+K2 = fem.assemble_matrix(fem.form(stiffness_form_2), bcs=[]).to_dense()
+
+def my_print(A, float_formatter = "{:.3f}".format):
+  np.set_printoptions(formatter={'float_kind':float_formatter})
+  print(A)
+
+if verbosity>1:
+  print(f"M1 ({type(M1)}):")
+  my_print(M1)
+  print(f"K1 ({type(K1)}):")
+  my_print(K1)
+  print(f"M2 ({type(M2)}):")
+  my_print(M2)
+  print(f"K2 ({type(K2)}):")
+  my_print(K2)
+```
+### Cartesian product elements
+
+Reasoning as for $P_1\times P_1$ elements, we have tha the FE matrix can be written as
+$$
+A = A^{(1)} + A^{(2)},
+$$ 
+where $A^{(1)}$ is the block matrix
+$$
+A^{(1)} =
+\begin{pmatrix}
+M^{(2)}_{0,0}K^{(1)} & M^{(2)}_{0,1}K^{(1)} & \dots & M^{(2)}_{0,m}K^{(1)}
+\\
+& & \vdots
+\\
+M^{(2)}_{m,0}K^{(1)} & M^{(2)}_{m,1}K^{(1)} & \dots & M^{(2)}_{m,m}K^{(1)} 
+\end{pmatrix},
+$$
+that is $A^{(1)} = M^{(2)} \otimes K^{(1)}$ (Kronecker product).
+And similarly, $A^{(2)} = K^{(2)} \otimes M^{(1)}$.
+
+#### Computing the global matrix $A = A^{(1)} + A^{(2)}$
+```{python}
+A1 = np.kron(M2, K1)  # Kronecker product
+A2 = np.kron(K2, M1)  # Kronecker product
+A = A1 + A2   # TODO: A += np.kron(K2, M1)
+if verbosity>1:
+  print(f"A1: shape={A1.shape}\n", A1)  
+  print(f"A2: shape={A2.shape}\n", A2)
+  print(f"A: shape={A.shape}\n", A)
+
+save_system = True
+if save_system:
+  np.save('A.npy', A)
+```
+
+### Global RHS
+
+Again, the vector $L$ can be written as $L = BF$, where 
+$B=M^{(2)}\otimes M^{(1)}$ and
+$$
+F=(F_{0,0}, F_{1,0},\dots, F_{n,0}, \;\dots,\; F_{0,m}, F_{1,m},\dots F_{n,m})
+$$
+with $F_{j,l}=f_1(x_j)f_2(y_l)$.
+
+### Computing the RHS
+```{python}
+from numpy import pi, sin
+
+# Versión nueva
+test_id = "1.1"
+if(test_id=="1.1"):
+  f1_u_exact = lambda x: sin(pi*x)
+  f2_u_exact = lambda y: sin(pi*y)
+  f_u_exact = lambda x, y: f1_u_exact(x)*f2_u_exact(y)
+  u_exact = f_u_exact(global_dof[:,0], global_dof[:,1])
+  F1_exact = lambda x: 2*np.pi**2*sin(pi*x)
+  F2_exact = lambda y: sin(pi*y)
+
+X, Y = np.meshgrid(partition_1, partition_2) 
+print("X: ", X, "\nY: ", Y)
+Z = F1_exact(X)*F2_exact(Y)
+F_dof = Z.reshape(n_points_1*n_points_2)
+print(f"F_dof shape={F_dof.shape}\n", F_dof)
+
+# Versión anterior
+X, Y = global_dof[:,0], global_dof[:,1]
+print("X: ", X, "\nY: ", Y)
+test_id = "1.1"
+if(test_id=="1.1"):
+  f_u_exact = lambda x, y: sin(pi*x)*sin(pi*y)
+  F_dof = 2*np.pi**2*u_exact
+elif(test_id=="1.2"):
+  f_u_exact = lambda x, y: sin(pi*x)
+  F_dof = np.pi**2*u_exact
+elif(test_id=="1.3"):
+  f_u_exact = lambda x, y: x**2*y**2
+  F_dof = 2*(global_dof[:,0]**2+global_dof[:,1]**2)
+
+u_exact = f_u_exact(X, Y)
+print(f"F_dof shape={F_dof.shape}\n", F_dof)
+print(f"M2.shape: {M2.shape}, M1.shape: {M1.shape}")
+B = np.kron(M2, M1)
+print(f"B shape={B.shape}")
+L = np.dot(B, F_dof)
+if verbosity>1:
+  print("L:", L)
+if verbosity>2:
+  print("B:", B)
+if save_system:
+  np.save('L.npy', L)
+```
+
+## Dirichlet boundary conditions
+
+Let us define $X_0=Y_0=0$ and $X_1=Y_1=y1$ Then 
+$$
+\partial\Omega_1=\{X_0,X_1\} \quad\text{ and } \partial\Omega_1=\{Y_0, Y_1\}.
+$$
+We split $\partial\Omega$ into:
+\begin{align}
+   \Gamma_{\text{T}} &= \{Y_0\}\times [X_0,X_1], \\
+   \Gamma_{\text{B}} &= \{Y_1\}\times [X_0,X_1], \\
+   \Gamma_{\text{L}} &= \{X_0\} \times (Y_0,Y_1), \\
+   \Gamma_{\text{R}} &= \{X_1\} \times (Y_0,Y_1). \\
+\end{align}
+
+Using the numeration defiend above, $I(i,k)=i+(n+1)k$, we have the 
+following distribution of the boundary degrees of freedom:
+
+- $\Gamma_{\text{T}}$: Indices $i\in\{0, \dots, n\}$, $k=0$, then
+  $$I=0, 1,  \dots, n.$$
+- $\Gamma_{\text{B}}$ : Indices $i\in\{0, \dots, n\}$, $k=m$,
+  $$I=m(n+1), m(n+1)+1,  \dots, m(n+1) + n.$$
+- $\Gamma_{\text{L}}$: Indices $i=0$, $k\in\{1,\dots,m-1\}$. 
+  $$I=n+1, 2(n+1), \dots, (m-1)(n+1).$$
+- $\Gamma_{\text{R}}$: Indices $i=n$, $k\in\{1,\dots,m-1\}$,
+  $$I=2n+1, 3n+1, \dots, m\cdot n+1.$$
+
+### Implementation
+
+```{python}
+# n_points_1 = n+2, n_points_2 = m+2
+n, m = n_points_1 - 1, n_points_2 - 1
+
+# Gamma_B
+boundary_B = np.arange(0, n+1)  # 0, 1,..., n
+# Gamma_T
+boundary_T = np.arange(m*(n+1), (m+1)*(n+1))  # n+1, ..., 2n+2
+# Gamma_L
+idx0 = n+1
+idx1 = idx0 + (m-2)*(n+1) + 1
+boundary_L = np.arange(idx0, idx1, n+1)  
+# Gamma_R
+idx0 = 2*n+1
+idx1 = idx0 + (m-2)*(n+1) + 1
+boundary_R = np.arange(idx0, idx1, n+1)  
+
+def plot_dofs(ax, idx,  show_labels=False):
+  ax.grid(True)
+  ax.scatter(global_dof[idx,0], global_dof[idx,1])
+
+  if show_labels:
+    labels = []
+    for i in idx:
+      labels.append(f"  $x_{{{i}}}$")
+
+    for i, l in enumerate(labels):
+      x, y = global_dof[idx[i],0], global_dof[idx[i],1]
+      ax.text(x, y, l)
+
+def plot_dirichlet_dofs():
+  fig, ax = plt.subplots()
+  ax.set_title("Dirichlet boundary points")
+
+  plot_dofs(ax, idx=boundary_B, show_labels=True) 
+  plot_dofs(ax, idx=boundary_T, show_labels=True) 
+  plot_dofs(ax, idx=boundary_L, show_labels=True) 
+  plot_dofs(ax, idx=boundary_R, show_labels=True) 
+
+plot_dirichlet_dofs()
+```
+
+## Block dirichlet degrees of freedom
+
+```{python}
+from scipy.linalg import solve
+from itertools import chain
+tgv = 1.e+30 # Tres grand value (or terrible giant value)
+for i in chain(boundary_B, boundary_L, boundary_R, boundary_T):
+  print(f"Blocking node {i}, f value: {f_u_exact(global_dof[i,0], global_dof[i,1])}")
+  A[i,:] = np.zeros(A.shape[1])
+  A[i,i] = 1
+  L[i] = f_u_exact(global_dof[i,0], global_dof[i,1])
+  print(f"  rhs: {L[i]:.3g}")
+
+if save_system:
+  np.save('A_bc.npy', A)
+  np.save('L_bc.npy', L)
+
+X = solve(A, L)
+
+U = X.reshape(n_points_2, n_points_1)
+if verbosity>2:
+  print("A =", A) 
+  print("L =", L)
+  print("X =", X)
+if verbosity>1:
+  print("U =", U)
+
+def plot_solution(U):
+  import matplotlib.pyplot as plt
+  import numpy as np
+
+  import matplotlib.cm as cm
+
+  delta = 0.025
+  x = np.linspace(X0, X1, n_points_1)
+  y = np.linspace(Y0, Y1, n_points_2)
+  X, Y = np.meshgrid(x, y)
+  fig, ax = plt.subplots()
+  Uex = f_u_exact(X, Y)
+  Uerr = np.abs(U-Uex)
+  CF = ax.contourf(X, Y, U)
+  CS = ax.contour(X, Y, U, colors="black")
+  ax.clabel(CS, inline=True, fontsize=10) 
+  # Make a colorbar for the ContourSet returned by the contourf call.
+  cbar = fig.colorbar(CF)
+  ax.scatter(global_dof[:,0], global_dof[:,1], s=8.0, c="orange")
+
+  plt.show()
+
+plot_solution(U)
+```
