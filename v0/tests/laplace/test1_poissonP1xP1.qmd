@@ -5,6 +5,7 @@ date: today
 format:
   html: 
     theme: solar # Darker themes: darkly, slate, solar
+jupyter: python3
 ---
 
 - Poisson problem with dirichlet conditions
